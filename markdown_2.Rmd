@@ -1,0 +1,91 @@
+---
+title: "markdown_2"
+author: "Phyliss"
+date: "2017/7/7"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+#extract table from webpage
+```{r}
+library(rvest)
+library(tidyverse)
+
+doc <- read_html("https://en.wikipedia.org/wiki/List_of_countries_by_cigarette_consumption_per_capita")
+smoking <- doc %>% html_node("table.wikitable") %>% html_table
+colnames(smoking)
+colnames(smoking) <- c('Ranking', 'Country', 'Number of cigs')
+smoking
+```
+
+
+```{r}
+doc <- read_html(" https://en.wikipedia.org/wiki/List_of_newspapers_in_the_Republic_of_Ireland")
+doc %>% html_node('table.wikitable:first-child') %>% html_table
+```
+
+#job list scrapping
+```{r}
+session <- html_session("http://www.indeed.nl/vacatures?q=analytics&l=Rotterdam")
+session %>% html_nodes('.result')
+```
+
+#book text - session 4 exercise
+```{r}
+library(gutenbergr)
+gutenberg_works(gutenberg_author_id == 34724, distinct = FALSE)
+dunwich <- gutenberg_download(50133)
+library(dplyr)
+dunwich$text %>% head(10)
+
+library(stringr)
+dunwich_2 <- dunwich %>% filter(text != "" & !str_detect(text, "^[0-9]+$"))
+dunwich_2 %>% select(text) %>% as.data.frame %>% head(30)
+
+dunwich_3 <- dunwich_2$text %>% stringi::stri_encode(., from = "ISO-8859-1", 
+    to = "UTF-8")
+
+VAD_scores_url <- "http://crr.ugent.be/papers/Ratings_Warriner_et_al.csv"
+VAD <- readr::read_csv(VAD_scores_url) %>% select(Word, valence = V.Mean.Sum, 
+    arousal = A.Mean.Sum, dominance = D.Mean.Sum)
+
+library(tm)
+dunwich_corpus <- dunwich_3 %>% VectorSource %>% Corpus
+dunwich_corpus
+
+dunwich_corpus_cleaned <- dunwich_corpus %>%
+  tm_map(content_transformer(tolower)) %>%      # lower case
+  tm_map(removePunctuation) %>%                 # remove punctuation
+  tm_map(removeWords, stopwords('english')) %>% # remove common words
+  tm_map(stripWhitespace)                       # remove white space
+
+tdm <- dunwich_corpus_cleaned %>% TermDocumentMatrix
+tdm %>% findFreqTerms(lowfreq = 30)
+
+tdm_long <- with(tdm, data_frame(term = i, document = j, count = v)) %>% mutate(term = factor(term,
+    labels = Terms(tdm)) %>% as.character)
+tdm_scored <- tdm_long %>% inner_join(VAD, by = c(term = "Word"))
+tdm_scored
+
+line_scores <- tdm_scored %>% 
+  transmute(line = document, 
+            valence = valence * count, 
+            arousal = arousal * count, 
+            dominance = dominance * count) %>% 
+  group_by(line) %>% 
+  summarise_each(funs(sum))
+
+library(tidyr)
+library(ggplot2)
+
+line_scores_2 <- line_scores %>% gather(dimension, score, -line)
+g <- ggplot(line_scores_2, aes(x = line, y = score, colour = dimension))
+
+
+
+```
+
